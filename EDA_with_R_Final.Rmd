@@ -1,0 +1,255 @@
+---
+title: "Independent Project: Data Cleaning and EDA using R"
+author: "Cynthia Mwadime"
+date: "May 27, 2022"
+output: html_document
+---
+## Question
+
+A Kenyan enterpreneur who created an online cryptocurrency course would like to advertise on their blog. They need help identifying the most likely users to click on ads.
+
+## Success Metric
+
+* finding the individual who are likely to click the ads
+
+## Context
+
+knowing your clients who are likely to click on the ads are the most potential audience and customers and thus being able to know what they need and meeting their demands increases they satisfaction and are more likely to get the world out about the blog hence greating a larger audience 
+
+
+**Experimental design**
+
+* Load the Libraries
+* Read the data 
+* Cleaning
+* EDA
+
+```{r, echo=TRUE}
+library(tidyverse)
+library(readr)
+library(ROCR)
+library(PerformanceAnalytics)
+library(e1071)
+library(caret)
+library(gbm)
+library(corrplot)
+library(ggcorrplot)
+library(MASS)
+library(rpart)
+library(caTools)
+library(naivebayes)
+library(class)
+library(ISLR)
+library(glmnet)
+library(Hmisc)
+library(funModeling)
+library(pROC)
+library(randomForest)
+library(klaR)
+library(scales)
+library(cluster)
+library(factoextra)
+library(DataExplorer)
+library(ClustOfVar)
+library(GGally)
+```
+
+Loading the dataset
+```{r, echo=TRUE}
+library(csvread)
+url <- "http://bit.ly/IPAdvertisingData"
+destfile <- "IPAdvertisingData.xls"
+curl::curl_download(url, destfile)
+IPAdvertisingData <- read_csv(destfile)
+View(IPAdvertisingData)
+
+```
+```{r, echo=TRUE}
+# Removing duplicates from all columns
+IPAdvertisingData = IPAdvertisingData[!duplicated(IPAdvertisingData), ]
+```
+
+```{r, echo=TRUE}
+# previewing the dataset
+head(IPAdvertisingData)
+```
+
+``` {r, echo=TRUE}
+# checking the percentage of missing values for all variables
+plot_missing(IPAdvertisingData)
+```
+It seems there are no missing values
+```{r, echo=TRUE}
+# getting the summary statistics
+summary(IPAdvertisingData)
+```
+The mean and medians of each feature are not far appart suggesting the data is normaly distributed and outliers are not altering
+
+```{r echo=TRUE}
+# first attemplt at displaying outliers in lal
+boxplot(IPAdvertisingData%>% select_if(is.numeric))
+
+```
+```{r echo=TRUE}
+# remnaming the column names so it's easier to refference 
+names(IPAdvertisingData) <- gsub(" ", "_", names(IPAdvertisingData))
+colnames(IPAdvertisingData)
+
+```
+```{r echo=TRUE}
+ggplot(IPAdvertisingData) +
+  aes(x = "", y = Daily_Time_Spent_on_Site) +
+  geom_boxplot(fill = "#FFB6C1") +
+  theme_minimal()
+```
+
+```{r, echo=TRUE}
+# Converting 0,1 to Female, Male so visualization's better
+IPAdvertisingData <- IPAdvertisingData %>% 
+  mutate(Male = if_else(Male == 1, "MALE", "FEMALE"))
+
+```
+
+```{r echo=TRUE}
+#creating a time series plot
+p <- ggplot(IPAdvertisingData, aes(x=Timestamp, y=Daily_Time_Spent_on_Site)) +
+       geom_line()
+
+#display time series plot
+p
+```
+
+```{r echo=TRUE}
+# Daily time pent on the site comparison by gender
+IPAdvertisingData %>%
+  ggplot(aes(x=Male,y=Daily_Time_Spent_on_Site))+
+  geom_boxplot(fill='lightblue')+
+  xlab("Sex")+
+  ylab("Daily time spent on site")+
+  facet_grid(~Clicked_on_Ad)
+```
+```{r echo=TRUE}
+# Converting 0,1 to Female, Male so visualization's better
+IPAdvertisingData <- IPAdvertisingData %>% 
+  mutate(Clicked_on_Ad = if_else(Clicked_on_Ad == 1, "CLICKED", "NOT_CLICKED"))
+```
+
+```{r echo=TRUE}
+# Daily time pent on the site comparison by gender and age
+IPAdvertisingData %>%
+
+  ggplot(aes(x=Male,y=Daily_Time_Spent_on_Site, group=Male))+
+  geom_boxplot(fill='pink')+
+  xlab("Sex")+
+  ylab("Daily time spent on site")+
+  facet_grid(~Clicked_on_Ad)
+```
+
+
+
+
+```{r echo=TRUE}
+# Bar plot for target (Whether or not the user clicked on the ad) 
+ggplot(IPAdvertisingData, aes(x=IPAdvertisingData$Male, fill=IPAdvertisingData$Clicked_on_Ad)) + 
+  geom_bar() +
+  xlab("Whether or not the user clicked on the ad") +
+  ylab("Count") +
+  ggtitle("Analysis of Gender vs Whether or not the user clicked on the ad") +
+  scale_fill_discrete(name = "Click", labels = c("Didn't Click", "Clicked"))
+```
+
+here is no imbalance issue in the target variable.
+```{r echo=TRUE}
+# Counting the age distribution
+IPAdvertisingData %>% 
+  group_by(Age) %>% 
+  count() %>% 
+  filter(n > 10) %>% 
+  ggplot()+
+  geom_col(aes(Age, n), fill = "lightblue")+
+  ggtitle("Age Distribution") +
+  xlab("Age")  +
+  ylab("Age Count")
+```
+
+```{r echo=TRUE}
+# bivariate analsis on Age, Gender and Daily internet Usage
+IPAdvertisingData %>%
+  ggplot(aes(x=Age,y=Daily_Internet_Usage,color=Male, size=Daily_Internet_Usage))+
+  geom_point(alpha=0.7)+xlab("Age") +
+  ylab("Daily Internet Usage")+
+  guides(fill = guide_legend(title = "Gender"))
+```
+
+```{r echo=TRUE}
+corr <- cor(IPAdvertisingData%>% select_if(is.numeric))
+corr
+
+#corrplot(corr, method = "ellipse", type="upper",)
+```
+
+```{r echo=TRUE}
+p.mat <- cor_pmat(corr, method = "spearman")
+
+ggcorrplot(corr, method = "square", type = "upper", 
+           colors = c("#6D9EC1", "white", "#E46726"), 
+           lab = TRUE, p.mat=p.mat, sig.level = .05)
+```
+
+```{r echo=TRUE}
+ggcorrplot(corr,lab = T)
+```
+
+```{r echo=TRUE}
+ggcorr(corr, label = T, label_round = 2)
+```
+
+```{r echo=TRUE}
+ggplot(IPAdvertisingData, aes(x = Age, y = Daily_Internet_Usage, color = Clicked_on_Ad, shape = Clicked_on_Ad))+
+  geom_point()+
+  geom_smooth(se = FALSE);
+```
+
+```{r echo=TRUE}
+ggplot(IPAdvertisingData, aes(x = Age, y = Daily_Time_Spent_on_Site, color = Clicked_on_Ad, shape = Clicked_on_Ad))+
+  geom_point()+
+  geom_smooth(se = FALSE);
+```
+
+```{r echo=TRUE}
+# performing principle component analysis
+pca <- prcomp(IPAdvertisingData%>% select_if(is.numeric), scale = TRUE) # prcomp temel bileşen fonksiyonudur
+pca
+```
+
+```{r echo=TRUE}
+screeplot(pca)
+
+fviz_screeplot(pca)
+```
+
+```{r echo=TRUE}
+fviz_pca(pca)
+```
+
+```{r echo=TRUE}
+# component variance
+pca$sdev^2
+```
+
+```{r echo=TRUE}
+# component variance
+pca$rotation <- -pca$rotation
+
+pca
+```
+```{r echo=TRUE}
+# component variance
+pca$x <- -pca$x
+
+head(pca$x)
+```
+```{r echo=TRUE}
+# component variance
+fviz_pca(pca)
+```
